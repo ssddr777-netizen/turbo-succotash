@@ -1,0 +1,1987 @@
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ລະບົບ POS & ຈັດການຮ້ານອາຫານ - Lao Restaurant POS System</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts for Lao typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Lao:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Noto Sans Lao', sans-serif;
+            background-color: #f8fafc;
+        }
+        /* Thermal Receipt Printing Styles */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #receiptModal, #receiptModal *, #tableQrModal, #tableQrModal * {
+                visibility: visible;
+            }
+            #receiptModal, #tableQrModal {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                max-width: 80mm; /* Standard thermal receipt width */
+                margin: 0 auto;
+                padding: 0;
+                background: white !important;
+                box-shadow: none !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+        }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden select-none bg-slate-100">
+
+    <!-- MODE SWITCHER TOP BAR (ADMIN vs CUSTOMER SELF-ORDER) -->
+    <div class="bg-slate-950 text-white px-4 py-1.5 flex justify-between items-center text-xs border-b border-slate-800 no-print z-30">
+        <div class="flex items-center gap-2">
+            <span class="text-amber-400 font-bold"><i class="fa-solid fa-code-compare mr-1"></i> ໂຫມດການໃຊ້ງານ:</span>
+            <span id="currentModeLabel" class="bg-indigo-600 text-white px-2 py-0.5 rounded font-bold">Admin / ຫ້ອງຄົວ (Cashier & Kitchen)</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <button onclick="switchSystemMode('admin')" class="bg-indigo-700 hover:bg-indigo-600 px-2.5 py-1 rounded text-white font-semibold transition flex items-center gap-1">
+                <i class="fa-solid fa-user-shield"></i> ໂຫມດ Admin / ຫ້ອງຄົວ
+            </button>
+            <button onclick="openCustomerModeSelector()" class="bg-emerald-600 hover:bg-emerald-500 px-2.5 py-1 rounded text-white font-semibold transition flex items-center gap-1">
+                <i class="fa-solid fa-mobile-screen-button"></i> ໂຫມດລູກຄ້າສັ່ງເອງ (QR ໂຕະ)
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN APP CONTAINER FOR ADMIN / KITCHEN / POS MODE -->
+    <div id="adminAppContainer" class="flex-1 flex flex-col overflow-hidden">
+        
+        <!-- TOP NAVBAR HEADER -->
+        <header class="bg-slate-900 text-white shadow-md flex-none z-20 border-b border-slate-800">
+            <div class="max-w-7xl mx-auto px-4 py-2.5 flex justify-between items-center">
+                <!-- Logo & Title -->
+                <div class="flex items-center space-x-3 space-x-reverse">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-emerald-500/30">
+                        <i class="fa-solid fa-utensils"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-base sm:text-lg font-bold tracking-wide leading-tight text-white flex items-center gap-2">
+                            ລະບົບ POS & ຈັດການຮ້ານອາຫານ
+                            <span class="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-semibold hidden sm:inline-block">v3.0</span>
+                        </h1>
+                        <p class="text-[11px] text-slate-400">QR Table Self-Ordering & Kitchen Management</p>
+                    </div>
+                </div>
+
+                <!-- Header Controls -->
+                <div class="flex items-center space-x-2 sm:space-x-3">
+                    <!-- Add Table Button -->
+                    <button id="navAddTableBtn" onclick="openModal('addTableModal')" class="hidden bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-chair"></i>
+                        <span class="hidden sm:inline">ເພີ່ມໂຕະ</span>
+                    </button>
+
+                    <!-- Add Menu Button (Admin Only) -->
+                    <button id="navAddMenuBtn" onclick="openModal('addProductModal')" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm border border-emerald-500/50">
+                        <i class="fa-solid fa-plus-circle"></i>
+                        <span class="hidden sm:inline">ເພີ່ມເມນູໃໝ່</span>
+                    </button>
+
+                    <!-- Bank Config Button -->
+                    <button onclick="openModal('bankSettingsModal')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 border border-slate-700">
+                        <i class="fa-solid fa-qrcode text-amber-400"></i>
+                        <span class="hidden sm:inline">ຕັ້ງຄ່າ QR ເງິນ</span>
+                    </button>
+
+                    <!-- Admin Status Badge -->
+                    <span id="adminBadge" class="hidden items-center text-xs bg-slate-800 border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-pulse"></span>
+                        <span>Admin Mode</span>
+                    </span>
+
+                    <!-- Auth Action Button -->
+                    <button id="navAuthBtn" onclick="handleAuthAction()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm">
+                        <i class="fa-solid fa-lock"></i>
+                        <span id="navAuthText">ເຂົ້າສູ່ລະບົບ Admin</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- MAIN CONTENT AREA -->
+        <div class="flex-1 flex overflow-hidden">
+            <main class="flex-1 flex flex-col md:flex-row overflow-hidden">
+                
+                <!-- LEFT MAIN DISPLAY PANEL -->
+                <section class="flex-1 flex flex-col bg-slate-50 border-r border-slate-200 overflow-hidden">
+                    
+                    <!-- Navigation Tabs -->
+                    <div class="p-3 bg-white border-b border-slate-200 flex flex-wrap gap-2 items-center justify-between shadow-xs">
+                        <div class="flex items-center gap-1.5 sm:gap-2 overflow-x-auto">
+                            <button onclick="switchTab('tables')" id="tabTablesBtn" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition bg-indigo-600 text-white shadow-sm flex items-center gap-1.5 whitespace-nowrap">
+                                <i class="fa-solid fa-border-all"></i> ຈັດການໂຕະ
+                            </button>
+                            <button onclick="switchTab('kitchen')" id="tabKitchenBtn" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition text-slate-600 hover:bg-slate-100 flex items-center gap-1.5 whitespace-nowrap relative">
+                                <i class="fa-solid fa-kitchen-set text-amber-500"></i> ອໍເດີ້ອອນໄລນ໌ / ຫ້ອງຄົວ
+                                <span id="kitchenBadge" class="hidden bg-red-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold ml-1 animate-pulse">0</span>
+                            </button>
+                            <button onclick="switchTab('pos')" id="tabPosBtn" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition text-slate-600 hover:bg-slate-100 flex items-center gap-1.5 whitespace-nowrap">
+                                <i class="fa-solid fa-utensils"></i> ເມນູອາຫານ
+                            </button>
+                            <button onclick="switchTab('history')" id="tabHistoryBtn" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition text-slate-600 hover:bg-slate-100 flex items-center gap-1.5 whitespace-nowrap">
+                                <i class="fa-solid fa-clock-rotate-left"></i> ປະວັດການຂາຍ
+                            </button>
+                        </div>
+
+                        <!-- Dynamic Search Input -->
+                        <div id="posFilterGroup" class="relative w-full sm:w-56 mt-2 sm:mt-0">
+                            <input type="text" id="searchInput" oninput="renderProducts()" placeholder="ຄົ້ນຫາເມນູ..." class="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50">
+                            <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2.5 text-slate-400 text-xs"></i>
+                        </div>
+                    </div>
+
+                    <!-- Category Filters Bar (For POS View) -->
+                    <div id="categoryBar" class="hidden px-3 py-2 bg-slate-100 border-b border-slate-200 flex items-center gap-2 overflow-x-auto text-xs font-semibold">
+                        <button onclick="filterCategory('ALL')" class="cat-btn px-3 py-1 rounded-full bg-indigo-600 text-white shadow-sm whitespace-nowrap" data-cat="ALL">ທັງໝົດ</button>
+                        <button onclick="filterCategory('ອາຫານ')" class="cat-btn px-3 py-1 rounded-full bg-white text-slate-600 hover:bg-slate-200 border border-slate-200 whitespace-nowrap" data-cat="ອາຫານ">🍲 ອາຫານ</button>
+                        <button onclick="filterCategory('ເຄື່ອງດື່ມ')" class="cat-btn px-3 py-1 rounded-full bg-white text-slate-600 hover:bg-slate-200 border border-slate-200 whitespace-nowrap" data-cat="ເຄື່ອງດື່ມ">🧋 ເຄື່ອງດື່ມ</button>
+                        <button onclick="filterCategory('ຂອງຫວານ')" class="cat-btn px-3 py-1 rounded-full bg-white text-slate-600 hover:bg-slate-200 border border-slate-200 whitespace-nowrap" data-cat="ຂອງຫວານ">🍨 ຂອງຫວານ</button>
+                        <button onclick="filterCategory('ອາຫານວ່າງ')" class="cat-btn px-3 py-1 rounded-full bg-white text-slate-600 hover:bg-slate-200 border border-slate-200 whitespace-nowrap" data-cat="ອາຫານວ່າງ">🍟 ອາຫານວ່າງ</button>
+                    </div>
+
+                    <!-- TAB 1: TABLE MANAGEMENT VIEW -->
+                    <div id="viewTables" class="flex-1 p-4 overflow-y-auto">
+                        <div class="flex justify-between items-center mb-4">
+                            <div>
+                                <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                                    <i class="fa-solid fa-chair text-indigo-600"></i> ສະຖານະໂຕະອາຫານທັງໝົດ
+                                </h2>
+                                <p class="text-xs text-slate-500">ຄລິກໂຕະເພື່ອເບິ່ງອໍເດີ້, ເພີ່ມສິນຄ້າ ຫຼື ສ້າງ QR Code ໃຫ້ລູກຄ້າ</p>
+                            </div>
+                            <div class="flex items-center gap-2 text-xs">
+                                <span class="flex items-center gap-1 text-emerald-600 font-semibold"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> ຫວ່າງ</span>
+                                <span class="flex items-center gap-1 text-amber-600 font-semibold ml-2"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> ມີລູກຄ້າ</span>
+                                <span class="flex items-center gap-1 text-red-600 font-semibold ml-2"><span class="w-2.5 h-2.5 rounded-full bg-red-500"></span> ມີອໍເດີ້ໃໝ່</span>
+                            </div>
+                        </div>
+
+                        <!-- Table Cards Grid -->
+                        <div id="tablesGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                            <!-- Dynamically generated table cards -->
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: KITCHEN DISPLAY SYSTEM (KDS) & LIVE ORDERS -->
+                    <div id="viewKitchen" class="hidden flex-1 p-4 overflow-y-auto bg-slate-100">
+                        <div class="flex justify-between items-center mb-4">
+                            <div>
+                                <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                                    <i class="fa-solid fa-kitchen-set text-amber-500"></i> ລາຍການອໍເດີ້ເຂົ້າຫ້ອງຄົວ (Live Kitchen Display)
+                                </h2>
+                                <p class="text-xs text-slate-500">ອໍເດີ້ທີ່ລູກຄ້າສັ່ງຜ່ານ QR ໂຕະຈະເຂົ້າມາບ່ອນນີ້ເພື່ອໃຫ້ຫ້ອງຄົວຍືນຍັນ ແລະ ຈັດອໍເດີ້</p>
+                            </div>
+                            <button onclick="renderKitchenView()" class="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-bold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1">
+                                <i class="fa-solid fa-rotate"></i> ອັບເດດ
+                            </button>
+                        </div>
+
+                        <!-- Kitchen Orders Grid -->
+                        <div id="kitchenOrdersGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <!-- Kitchen Order Cards inserted dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- TAB 3: POS VISUAL MENU GRID -->
+                    <div id="viewPos" class="hidden flex-1 flex flex-col overflow-hidden p-3 sm:p-4">
+                        <!-- Quick Manual Entry Bar -->
+                        <div class="bg-white p-3 rounded-xl shadow-xs border border-slate-200 mb-3">
+                            <h2 class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <i class="fa-solid fa-bolt text-amber-500"></i> ເພີ່ມລາຍການດ່ວນ (Quick Manual Entry)
+                            </h2>
+                            <form onsubmit="handleManualAdd(event)" class="grid grid-cols-12 gap-2">
+                                <div class="col-span-12 sm:col-span-5">
+                                    <input type="text" id="mName" placeholder="ຊື່ສິນຄ້າ / ອາຫານ" required class="w-full text-xs px-3 py-1.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                                </div>
+                                <div class="col-span-6 sm:col-span-3">
+                                    <input type="number" id="mPrice" placeholder="ລາຄາ (ກີບ)" min="0" required class="w-full text-xs px-3 py-1.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                                </div>
+                                <div class="col-span-6 sm:col-span-2">
+                                    <input type="number" id="mQty" placeholder="ຈຳນວນ" min="1" value="1" required class="w-full text-xs px-3 py-1.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                                </div>
+                                <div class="col-span-12 sm:col-span-2">
+                                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition flex items-center justify-center gap-1 shadow-sm">
+                                        <i class="fa-solid fa-cart-plus"></i> ເພີ່ມ
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Visual Food Photo Cards Grid -->
+                        <div class="flex-1 overflow-y-auto pr-1">
+                            <div id="productGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                                <!-- Menu items inserted dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 4: ORDER HISTORY TABLE -->
+                    <div id="viewHistory" class="hidden flex-1 flex flex-col overflow-hidden p-3 sm:p-4">
+                        <div class="bg-white rounded-xl shadow-xs border border-slate-200 flex-1 flex flex-col overflow-hidden">
+                            <div class="p-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
+                                <div class="flex items-center gap-2">
+                                    <h3 class="font-bold text-slate-800 text-sm">ປະວັດການສັ່ງຊື້ທັງໝົດ</h3>
+                                    <span id="historyCountBadge" class="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full font-bold">0</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <input type="text" id="historySearchInput" oninput="renderHistory()" placeholder="ຄົ້ນຫາປະວັດ..." class="text-xs px-2.5 py-1 rounded-lg border border-slate-300 focus:outline-none">
+                                    <button onclick="clearAllHistory()" id="btnClearHistory" class="hidden text-xs bg-red-100 text-red-600 hover:bg-red-200 font-semibold px-2.5 py-1 rounded-lg transition">
+                                        <i class="fa-solid fa-trash-can mr-1"></i> ລຶບປະວັດທັງໝົດ
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="flex-1 overflow-y-auto p-2">
+                                <table class="w-full text-left text-xs text-slate-600 border-collapse">
+                                    <thead class="bg-slate-100 text-slate-700 uppercase font-bold sticky top-0 border-b">
+                                        <tr>
+                                            <th class="p-2.5">ເລກບິນ</th>
+                                            <th class="p-2.5">ວັນທີ / ເວລາ</th>
+                                            <th class="p-2.5">ໂຕະ / ລູກຄ້າ</th>
+                                            <th class="p-2.5">ວິທີຊຳລະ</th>
+                                            <th class="p-2.5 text-right">ຍອດລວມ</th>
+                                            <th class="p-2.5 text-center">ຈັດການ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="historyTableBody" class="divide-y divide-slate-100">
+                                        <!-- History rows dynamically populated -->
+                                    </tbody>
+                                </table>
+                                <div id="emptyHistoryMsg" class="text-center py-12 text-slate-400">
+                                    <i class="fa-solid fa-receipt text-4xl mb-2"></i>
+                                    <p class="text-xs">ຍັງບໍ່ທັນມີປະວັດການຂາຍ</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </section>
+
+                <!-- RIGHT SIDEBAR: SELECTED TABLE CART / BILLING CASHIER -->
+                <section class="w-full md:w-96 bg-white flex flex-col border-t md:border-t-0 border-slate-200 shadow-xl z-10">
+                    
+                    <!-- Sidebar Header with Selected Table Indicator -->
+                    <div class="p-3 bg-slate-900 text-white flex items-center justify-between">
+                        <div class="flex items-center space-x-2 space-x-reverse">
+                            <i class="fa-solid fa-chair text-emerald-400 text-lg"></i>
+                            <div>
+                                <h2 id="activeTableTitle" class="font-bold text-sm">ເລືອກໂຕະ (ກະລຸນາເລືອກໂຕະ)</h2>
+                                <p id="activeTableSubtitle" class="text-[10px] text-slate-400">ບໍ່ມີໂຕະທີ່ເລືອກ</p>
+                            </div>
+                        </div>
+                        <button onclick="clearActiveTableOrder()" class="text-xs text-slate-400 hover:text-red-400 font-medium px-2 py-1 rounded transition flex items-center gap-1">
+                            <i class="fa-solid fa-rotate-left"></i> ຍົກເລີກ/ລ້າງ
+                        </button>
+                    </div>
+
+                    <!-- Customer Info & Payment Type -->
+                    <div class="p-3 bg-slate-50 border-b border-slate-200 space-y-2">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">ຊື່ລູກຄ້າ / ໝາຍເຫດ</label>
+                            <input type="text" id="customerName" placeholder="ເຊັ່ນ: ລູກຄ້າຂາກ່ຽວ" class="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                        </div>
+                        <div class="flex items-center justify-between text-xs pt-1">
+                            <label class="font-bold text-slate-700">ວິທີຊຳລະເງິນ:</label>
+                            <select id="paymentMethodSelect" class="text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="qr">ໂອນຊຳລະຜ່ານ QR Code</option>
+                                <option value="cash">ເງິນສົດ (Cash)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Active Table Items List -->
+                    <div id="cartItemsContainer" class="flex-1 overflow-y-auto p-3 space-y-2">
+                        <div class="h-full flex flex-col items-center justify-center text-slate-400 py-12">
+                            <i class="fa-solid fa-chair text-4xl mb-2 text-slate-300"></i>
+                            <p class="text-xs">ກະລຸນາເລືອກໂຕະຈາກໜ້າ "ຈັດການໂຕະ"</p>
+                        </div>
+                    </div>
+
+                    <!-- Cart Totals & Checkout Actions -->
+                    <div class="p-4 bg-slate-50 border-t border-slate-200 space-y-2">
+                        <div class="flex justify-between text-xs text-slate-600">
+                            <span>ຍອດລວມສິນຄ້າ (Subtotal):</span>
+                            <span id="summarySubtotal" class="font-bold text-slate-800">0 LAK</span>
+                        </div>
+                        <div class="flex items-center justify-between text-xs text-slate-600">
+                            <span>ສ່ວນຫຼຸດ (Discount):</span>
+                            <div class="flex items-center w-28">
+                                <input type="number" id="discountInput" min="0" value="0" oninput="renderCart()" class="w-full text-right text-xs px-2 py-1 rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white">
+                                <span class="ml-1 text-[10px] font-bold">LAK</span>
+                            </div>
+                        </div>
+                        <div class="pt-2 border-t border-slate-200 flex justify-between items-center">
+                            <span class="text-sm font-bold text-slate-800">ຍອດລວມສຸດທິ:</span>
+                            <span id="summaryGrandTotal" class="text-lg font-black text-emerald-600">0 LAK</span>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="grid grid-cols-2 gap-2 pt-2">
+                            <button onclick="showTableQrModal()" class="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 px-2 rounded-xl text-xs transition flex items-center justify-center gap-1 shadow-sm">
+                                <i class="fa-solid fa-qrcode"></i> QR ໂຕະໃຫ້ລູກຄ້າ
+                            </button>
+                            <button onclick="processCheckout()" class="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold py-2.5 px-2 rounded-xl shadow-md transition flex items-center justify-center gap-1 text-xs">
+                                <i class="fa-solid fa-receipt"></i> ເກັບເງິນ / ພິມບິນ
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+            </main>
+        </div>
+    </div>
+
+    <!-- CUSTOMER SELF-ORDERING MODE CONTAINER (SCAN QR VIEW) -->
+    <div id="customerAppContainer" class="hidden flex-1 flex flex-col overflow-y-auto bg-slate-100">
+        <!-- Customer Top Header -->
+        <header class="bg-slate-900 text-white p-4 sticky top-0 z-30 shadow-md">
+            <div class="max-w-md mx-auto flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-lg">
+                        <i class="fa-solid fa-utensils"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-base font-bold flex items-center gap-2">
+                            ຮ້ານອາຫານ & ເຄື່ອງດື່ມ
+                        </h1>
+                        <p id="custTableBadge" class="text-xs text-emerald-400 font-bold flex items-center gap-1">
+                            <i class="fa-solid fa-chair"></i> ທ່ານກຳລັງນັ່ງຢູ່: <span id="custTableName">ໂຕະ 1</span>
+                        </p>
+                    </div>
+                </div>
+                <button onclick="switchSystemMode('admin')" class="text-xs bg-slate-800 border border-slate-700 px-2.5 py-1.5 rounded-lg text-slate-300 font-semibold hover:bg-slate-700">
+                    <i class="fa-solid fa-user-gear mr-1"></i> ສຳລັບພະນັກງານ
+                </button>
+            </div>
+        </header>
+
+        <!-- Customer Main Area -->
+        <div class="max-w-md mx-auto w-full p-4 space-y-4 flex-1">
+            
+            <!-- Category Pills for Customer -->
+            <div id="custCategoryBar" class="flex items-center gap-2 overflow-x-auto pb-1 text-xs font-semibold">
+                <button onclick="filterCustCategory('ALL')" class="cust-cat-btn px-3.5 py-1.5 rounded-full bg-indigo-600 text-white shadow-sm whitespace-nowrap" data-cat="ALL">ທັງໝົດ</button>
+                <button onclick="filterCustCategory('ອາຫານ')" class="cust-cat-btn px-3.5 py-1.5 rounded-full bg-white text-slate-600 border border-slate-200 whitespace-nowrap" data-cat="ອາຫານ">🍲 ອາຫານ</button>
+                <button onclick="filterCustCategory('ເຄື່ອງດື່ມ')" class="cust-cat-btn px-3.5 py-1.5 rounded-full bg-white text-slate-600 border border-slate-200 whitespace-nowrap" data-cat="ເຄື່ອງດື່ມ">🧋 ເຄື່ອງດື່ມ</button>
+                <button onclick="filterCustCategory('ຂອງຫວານ')" class="cust-cat-btn px-3.5 py-1.5 rounded-full bg-white text-slate-600 border border-slate-200 whitespace-nowrap" data-cat="ຂອງຫວານ">🍨 ຂອງຫວານ</button>
+                <button onclick="filterCustCategory('ອາຫານວ່າງ')" class="cust-cat-btn px-3.5 py-1.5 rounded-full bg-white text-slate-600 border border-slate-200 whitespace-nowrap" data-cat="ອາຫານວ່າງ">🍟 ອາຫານວ່າງ</button>
+            </div>
+
+            <!-- Customer Menu Grid -->
+            <div id="custMenuGrid" class="grid grid-cols-2 gap-3">
+                <!-- Customer items populated dynamically -->
+            </div>
+
+            <!-- Order Status Notification Tracker (If customer sent orders) -->
+            <div id="custOrderStatusCard" class="hidden bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2">
+                <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                    <h3 class="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                        <i class="fa-solid fa-clock-rotate-left text-amber-500"></i> ສະຖານະອໍເດີ້ຂອງທ່ານ
+                    </h3>
+                    <span id="custOrderStatusBadge" class="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded-full font-bold">ກຳລັງສົ່ງເຂົ້າຄົວ</span>
+                </div>
+                <div id="custOrderItemsList" class="space-y-1 text-xs text-slate-600">
+                    <!-- Sent items listed here -->
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Floating Customer Cart Footer Bar -->
+        <div class="sticky bottom-0 bg-white border-t border-slate-200 p-3 shadow-2xl z-30">
+            <div class="max-w-md mx-auto flex items-center justify-between">
+                <div>
+                    <span class="text-[10px] text-slate-400 block font-bold uppercase">ຍອດລວມສັ່ງຊື້</span>
+                    <span id="custCartTotalText" class="text-base font-bold text-emerald-600">0 LAK</span>
+                </div>
+                <button onclick="openCustomerCartModal()" class="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold py-2.5 px-5 rounded-xl shadow-md transition flex items-center gap-2 text-xs">
+                    <i class="fa-solid fa-paper-plane"></i>
+                    <span>ສົ່ງອໍເດີ້ (<span id="custCartCount">0</span>)</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 1: ADD / EDIT TABLE (ADMIN) -->
+    <div id="addTableModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-slate-100">
+            <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+                <h3 class="font-bold text-xs sm:text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-chair text-amber-400"></i> ເພີ່ມ / ຈັດການໂຕະອາຫານ
+                </h3>
+                <button onclick="closeModal('addTableModal')" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+            <form onsubmit="handleSaveTable(event)" class="p-5 space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase mb-1">ຊື່ໂຕະ / ເລກໂຕະ</label>
+                    <input type="text" id="tableNameInput" placeholder="ເຊັ່ນ: ໂຕະ 05, VIP 1, Outdoor 2" required class="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div class="pt-2 flex gap-2">
+                    <button type="submit" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg transition text-xs">
+                        ບັນທຶກໂຕະ
+                    </button>
+                    <button type="button" onclick="closeModal('addTableModal')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-4 rounded-lg transition text-xs">
+                        ຍົກເລີກ
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 2: TABLE QR CODE FOR CUSTOMERS -->
+    <div id="tableQrModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white w-full max-w-xs rounded-2xl shadow-2xl p-5 text-center space-y-3">
+            <div class="border-b border-slate-200 pb-2">
+                <h3 id="tableQrTitle" class="font-bold text-base text-slate-800">QR Code ໂຕະ 1</h3>
+                <p class="text-xs text-slate-500">ສແກນເພື່ອສັ່ງອາຫານເອງຜ່ານມືຖື</p>
+            </div>
+            <div class="flex justify-center my-2">
+                <img id="tableQrImg" src="" class="w-48 h-48 border border-slate-200 rounded-xl p-2 bg-white shadow-xs" alt="Table QR">
+            </div>
+            <p class="text-[11px] text-slate-500">ລູກຄ້າສາມາດໃຊ້ກ້ອງມືຖືສແກນ QR ຢູ່ໂຕະເພື່ອເລືອກເມນູ ແລະ ສົ່ງອໍເດີ້ເຂົ້າຄົວໄດ້ທັນທີ</p>
+            <div class="pt-2 flex gap-2 no-print">
+                <button onclick="window.print()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg text-xs transition flex items-center justify-center gap-1">
+                    <i class="fa-solid fa-print"></i> ພິມ QR ໂຕະ
+                </button>
+                <button onclick="openDirectCustomerModeFromQr()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-3 rounded-lg text-xs transition">
+                    ທົດລອງສັ່ງ
+                </button>
+                <button onclick="closeModal('tableQrModal')" class="bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg text-xs">
+                    ປິດ
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 3: ADD / EDIT FOOD MENU ITEM (ADMIN CRUD + IMAGE UPLOAD) -->
+    <div id="addProductModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden border border-slate-100">
+            <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+                <h3 id="modalMenuTitle" class="font-bold text-sm sm:text-base flex items-center gap-2">
+                    <i class="fa-solid fa-utensils text-emerald-400"></i> ເພີ່ມ/ແກ້ໄຂ ເມນູອາຫານ
+                </h3>
+                <button onclick="closeModal('addProductModal')" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+            
+            <form id="menuForm" onsubmit="handleSaveProduct(event)" class="p-5 space-y-3">
+                <input type="hidden" id="editProdId">
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase mb-1">ຊື່ເມນູອາຫານ / ເຄື່ອງດື່ມ</label>
+                    <input type="text" id="menuName" placeholder="ເຊັ່ນ: ຕຳໝາກຫຸ່ງ / ກາເຟເຢັນ" required class="w-full px-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase mb-1">ລາຄາ (ກີບ)</label>
+                        <input type="number" id="menuPrice" placeholder="25000" min="0" required class="w-full px-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase mb-1">ໝວດໝູ່</label>
+                        <select id="menuCategory" class="w-full px-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                            <option value="ອາຫານ">ອາຫານ</option>
+                            <option value="ເຄື່ອງດື່ມ">ເຄື່ອງດື່ມ</option>
+                            <option value="ຂອງຫວານ">ຂອງຫວານ</option>
+                            <option value="ອາຫານວ່າງ">ອາຫານວ່າງ</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- REAL IMAGE UPLOAD & PREVIEW SECTION -->
+                <div class="space-y-2 border-t border-slate-100 pt-3">
+                    <label class="block text-xs font-bold text-slate-700 uppercase">ຮູບອາຫານ / ເຄື່ອງດື່ມ</label>
+                    
+                    <!-- File Upload Input -->
+                    <div>
+                        <span class="text-[11px] text-slate-500 block mb-1">ອັບໂຫຼດຮູບຈາກເຄື່ອງ (Local File Upload):</span>
+                        <input type="file" id="menuImageFile" accept="image/*" onchange="previewLocalImage(event)" class="w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer">
+                    </div>
+
+                    <div class="text-center text-[10px] text-slate-400 font-bold uppercase my-1">--- ຫຼື (OR) ---</div>
+
+                    <!-- Image URL Input -->
+                    <div>
+                        <span class="text-[11px] text-slate-500 block mb-1">ໃສ່ລິ້ງ URL ຮູບພາບ:</span>
+                        <input type="url" id="menuImageUrl" oninput="previewUrlImage()" placeholder="https://images.unsplash.com/photo-..." class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+
+                    <!-- Live Image Preview Container -->
+                    <div class="mt-2 flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                        <img id="imagePreview" src="https://placehold.co/200x200/f1f5f9/94a3b8?text=No+Image" class="w-16 h-16 object-cover rounded-lg border border-slate-300 shadow-xs" alt="Preview">
+                        <div class="text-[11px] text-slate-500">
+                            <p class="font-semibold text-slate-700">ຕົວຢ່າງຮູບ (Image Preview)</p>
+                            <p class="text-[10px] text-slate-400">ຮູບຈະຖືກບັນທຶກໄວ້ໃນ LocalStorage</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-3 flex gap-2">
+                    <button type="submit" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg transition text-xs sm:text-sm">
+                        ບັນທຶກເມນູ
+                    </button>
+                    <button type="button" onclick="closeModal('addProductModal')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2.5 px-4 rounded-lg transition text-xs sm:text-sm">
+                        ຍົກເລີກ
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 4: BANK / QR PAYMENT SETTINGS -->
+    <div id="bankSettingsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden border border-slate-100">
+            <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+                <h3 class="font-bold text-sm sm:text-base flex items-center gap-2">
+                    <i class="fa-solid fa-building-columns text-amber-400"></i> ຕັ້ງຄ່າບັນຊີທະນາຄານ (QR Code)
+                </h3>
+                <button onclick="closeModal('bankSettingsModal')" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+            <div class="p-5 space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase mb-1">ຊື່ທະນາຄານ / ລະບົບ (Bank Name)</label>
+                    <input type="text" id="bankNameInput" placeholder="ເຊັ່ນ: BCEL ONE / LDB" class="w-full px-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase mb-1">ຊື່ບັນຊີ (Account Name)</label>
+                    <input type="text" id="accountNameInput" placeholder="ເຊັ່ນ: PHONEXAY STORE" class="w-full px-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase mb-1">ເລກບັນຊີ / ເບີໂທລະສັບ (Account/Phone No)</label>
+                    <input type="text" id="accountNoInput" placeholder="020XXXXXXXX ຫຼື 160XXXXXXXX" class="w-full px-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div class="pt-2">
+                    <button onclick="saveBankSettings()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-lg transition text-xs sm:text-sm">
+                        ບັນທຶກຂໍ້ມູນທະນາຄານ
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 5: ADMIN LOGIN & SECURITY MANAGEMENT -->
+    <div id="authModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden border border-slate-100">
+            <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+                <h3 id="authModalTitle" class="font-bold text-sm sm:text-base flex items-center gap-2">
+                    <i class="fa-solid fa-user-shield text-indigo-400"></i> ເຂົ້າສູ່ລະບົບ Admin ຫຼັງບ້ານ
+                </h3>
+                <button onclick="closeModal('authModal')" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+
+            <!-- LOGIN VIEW -->
+            <div id="loginFormSection" class="p-6 space-y-4">
+                <p class="text-xs text-slate-500">ກະລຸນາປ້ອນລະຫັດຜ່ານເພື່ອເຂົ້າສູ່ລະບົບ Admin (ລະຫັດເລີ່ມຕົ້ນ: <span class="font-bold text-indigo-600">7788</span>)</p>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase mb-1">ລະຫັດຜ່ານ (Passcode)</label>
+                    <input type="password" id="inputAdminPasscode" placeholder="****" class="w-full text-center text-2xl tracking-widest px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div id="authErrorMsg" class="hidden text-xs text-red-500 font-semibold text-center bg-red-50 py-1.5 rounded-lg">
+                    ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ!
+                </div>
+                <button onclick="verifyAdminLogin()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-lg transition text-xs sm:text-sm">
+                    ເຂົ້າສູ່ລະບົບ
+                </button>
+                <div class="text-center pt-2 border-t border-slate-100">
+                    <button onclick="toggleAuthView('reset')" class="text-xs text-indigo-600 hover:underline">
+                        ລືມລະຫັດຜ່ານ? / ສ້າງລະຫັດໃໝ່ຜ່ານເບີໂທ
+                    </button>
+                </div>
+            </div>
+
+            <!-- RESET VIEW -->
+            <div id="resetFormSection" class="p-6 space-y-4 hidden">
+                <p class="text-xs text-slate-500">ຣີເຊັດລະຫັດຜ່ານ Admin ໂດຍໃຊ້ເບີໂທທີ່ລົງທະບຽນ (ເລີ່ມຕົ້ນ: <span class="font-bold text-indigo-600">02012345678</span>)</p>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase mb-1">ເບີໂທລະສັບ</label>
+                    <input type="text" id="inputResetPhone" placeholder="020XXXXXXXX" class="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-xs sm:text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase mb-1">ລະຫັດຜ່ານ Admin ໃໝ່</label>
+                    <input type="password" id="inputNewPasscode" placeholder="ປ້ອນລະຫັດໃໝ່" class="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-xs sm:text-sm">
+                </div>
+                <div id="resetStatusMsg" class="hidden text-xs font-semibold text-center py-1.5 rounded-lg"></div>
+                <button onclick="handlePasswordReset()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg transition text-xs sm:text-sm">
+                    ຢືນຢັນປ່ຽນລະຫັດຜ່ານ
+                </button>
+                <div class="text-center pt-2 border-t border-slate-100">
+                    <button onclick="toggleAuthView('login')" class="text-xs text-slate-500 hover:underline">
+                        &larr; ກັບໄປໜ້າເຂົ້າສູ່ລະບົບ
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 6: CUSTOMER BASKET & ORDER SUBMISSION MODAL -->
+    <div id="custCartModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[85vh]">
+            <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+                <h3 class="font-bold text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-basket-shopping text-emerald-400"></i> ຢືນຢັນອໍເດີ້ສັ່ງອາຫານ
+                </h3>
+                <button onclick="closeModal('custCartModal')" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+            
+            <div id="custCartItemsContainer" class="p-4 overflow-y-auto space-y-2 flex-1">
+                <!-- Items list -->
+            </div>
+
+            <div class="p-4 bg-slate-50 border-t border-slate-200 space-y-3">
+                <div class="flex justify-between items-center text-sm font-bold">
+                    <span class="text-slate-700">ຍອດລວມທັງໝົດ:</span>
+                    <span id="custModalGrandTotal" class="text-emerald-600">0 LAK</span>
+                </div>
+                <button onclick="submitCustomerOrder()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-md transition flex items-center justify-center gap-2 text-xs">
+                    <i class="fa-solid fa-paper-plane"></i> ຢືນຢັນສົ່ງອໍເດີ້ເຂົ້າຫ້ອງຄົວ
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 7: SELECT TABLE FOR CUSTOMER SELF-ORDER MODE SWITCH -->
+    <div id="selectCustomerTableModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-slate-100 p-5 space-y-4">
+            <div class="text-center">
+                <h3 class="font-bold text-base text-slate-800">ເລືອກໂຕະເພື່ອທົດລອງສັ່ງ</h3>
+                <p class="text-xs text-slate-500">ກະລຸນາເລືອກໂຕະທີ່ຕ້ອງການໃຫ້ລູກຄ້າສັ່ງອາຫານ</p>
+            </div>
+            <div id="customerTableSelectList" class="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+                <!-- Dynamically populated table list -->
+            </div>
+            <button onclick="closeModal('selectCustomerTableModal')" class="w-full bg-slate-200 text-slate-700 font-bold py-2 rounded-lg text-xs">
+                ຍົກເລີກ
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL 8: PRINTABLE THERMAL RECEIPT WITH DYNAMIC QR PAYMENT -->
+    <div id="receiptModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white w-full max-w-xs rounded-lg shadow-2xl p-4 text-slate-800 text-xs overflow-y-auto max-h-[90vh]">
+            
+            <!-- Receipt Header -->
+            <div class="text-center pb-3 border-b border-dashed border-slate-300 space-y-1">
+                <h2 class="text-base font-bold tracking-wide">ຮ້ານອາຫານ & ເຄື່ອງດື່ມ</h2>
+                <p class="text-[10px] text-slate-500">ນະຄອນຫຼວງວຽງຈັນ, ສປປ ລາວ</p>
+                <p class="text-[10px] text-slate-500">ໂທ: 020 1234 5678</p>
+                <div class="pt-1 text-xs font-bold uppercase tracking-wider text-slate-700">ໃບເຊັກບິນ / RECEIPT</div>
+            </div>
+
+            <!-- Receipt Metadata -->
+            <div class="py-2 border-b border-dashed border-slate-300 space-y-1 text-[11px]">
+                <div class="flex justify-between">
+                    <span>ເລກບິນ:</span>
+                    <span id="recId" class="font-bold">#POS-000000</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>ວັນທີ:</span>
+                    <span id="recDate">00/00/0000 00:00</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>ໂຕະ / ລູກຄ້າ:</span>
+                    <span id="recCustomer" class="font-semibold">ໂຕະ 1</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>ວິທີຊຳລະ:</span>
+                    <span id="recPayMethod" class="font-bold text-indigo-600">ໂອນຊຳລະ QR Code</span>
+                </div>
+            </div>
+
+            <!-- Items Table -->
+            <div class="py-2 border-b border-dashed border-slate-300">
+                <table class="w-full text-[11px]">
+                    <thead>
+                        <tr class="border-b border-slate-200 text-left">
+                            <th class="py-1">ລາຍການ</th>
+                            <th class="py-1 text-center">ຈຳນວນ</th>
+                            <th class="py-1 text-right">ລວມ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recItemsBody">
+                        <!-- Items rendered here -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Totals -->
+            <div class="py-2 border-b border-dashed border-slate-300 space-y-1 text-[11px]">
+                <div class="flex justify-between">
+                    <span>ຍອດລວມ:</span>
+                    <span id="recSubtotal">0 LAK</span>
+                </div>
+                <div id="recDiscountRow" class="flex justify-between text-red-500 hidden">
+                    <span>ສ່ວນຫຼຸດ:</span>
+                    <span id="recDiscount">-0 LAK</span>
+                </div>
+                <div class="flex justify-between font-bold text-sm pt-1 border-t border-slate-200">
+                    <span>ຍອດຊຳລະທັງໝົດ:</span>
+                    <span id="recGrandTotal" class="text-indigo-700">0 LAK</span>
+                </div>
+            </div>
+
+            <!-- QR Code Section -->
+            <div id="recQrContainer" class="py-3 text-center border-b border-dashed border-slate-300">
+                <p class="text-[10px] font-bold text-slate-600 mb-1">ສແກນເພື່ອຊຳລະເງິນ (Scan to Pay)</p>
+                <div class="flex justify-center my-1">
+                    <img id="qrCodeImg" src="" class="w-32 h-32 border border-slate-200 rounded-lg p-1 bg-white" alt="Payment QR Code">
+                </div>
+                <p id="recBankInfo" class="text-[9px] text-slate-500 mt-1 font-semibold">BCEL One | Account: 020XXXXXXXX</p>
+            </div>
+
+            <!-- Receipt Footer -->
+            <div class="pt-3 text-center text-[10px] text-slate-500 space-y-0.5">
+                <p>*** ຂອບໃຈທີ່ອຸດໜູນ / Thank You ***</p>
+                <p>ກະລຸນາກວດເບິ່ງເງິນທອນກ່ອນອອກຈາກຮ້ານ</p>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="mt-4 pt-3 border-t border-slate-200 flex gap-2 no-print">
+                <button onclick="window.print()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg text-xs transition flex items-center justify-center gap-1">
+                    <i class="fa-solid fa-print"></i> ພິມບິນ (Print)
+                </button>
+                <button onclick="closeModal('receiptModal')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-3 rounded-lg text-xs transition">
+                    ປິດ
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- APPLICATION LOGIC & STATE -->
+    <script>
+        // PRESET DEFAULT LAO MENU DATA
+        const DEFAULT_PRODUCTS = [
+            { id: 'p1', name: 'ຕຳໝາກຫຸ່ງ (Papaya Salad)', price: 25000, category: 'ອາຫານ', image: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=500&auto=format&fit=crop&q=80' },
+            { id: 'p2', name: 'ເຂົ້າປຽກເສັ້ນ (Lao Noodle Soup)', price: 30000, category: 'ອາຫານ', image: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500&auto=format&fit=crop&q=80' },
+            { id: 'p3', name: 'ຕຳເຂົ້າປຸ້ນ / ຕຳຖົ່ວ', price: 25000, category: 'ອາຫານ', image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500&auto=format&fit=crop&q=80' },
+            { id: 'p4', name: 'ແກ່ງໜໍ່ໄມ້ (Lao Bamboo Soup)', price: 35000, category: 'ອາຫານ', image: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&auto=format&fit=crop&q=80' },
+            { id: 'p5', name: 'ລາບໝູ (Lao Pork Larb)', price: 40000, category: 'ອາຫານ', image: 'https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=500&auto=format&fit=crop&q=80' },
+            { id: 'p6', name: 'ເຂົ້າຜັດກຸ້ງ (Shrimp Fried Rice)', price: 35000, category: 'ອາຫານ', image: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=500&auto=format&fit=crop&q=80' },
+            { id: 'p7', name: 'ກາເຟເຢັນ (Iced Coffee)', price: 20000, category: 'ເຄື່ອງດື່ມ', image: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=500&auto=format&fit=crop&q=80' },
+            { id: 'p8', name: 'ຊານົມເຢັນ (Iced Milk Tea)', price: 20000, category: 'ເຄື່ອງດື່ມ', image: 'https://images.unsplash.com/photo-1558857563-b371033873b8?w=500&auto=format&fit=crop&q=80' },
+            { id: 'p9', name: 'ນ້ຳອັດລົມ (Soda Drinks)', price: 10000, category: 'ເຄື່ອງດື່ມ', image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&auto=format&fit=crop&q=80' },
+            { id: 'p10', name: 'ໄອສກຣີມ (Ice Cream)', price: 15000, category: 'ຂອງຫວານ', image: 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=500&auto=format&fit=crop&q=80' },
+            { id: 'p11', name: 'ມັນຝຣັ່ງທອດ (French Fries)', price: 20000, category: 'ອາຫານວ່າງ', image: 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=500&auto=format&fit=crop&q=80' }
+        ];
+
+        // PRESET DEFAULT TABLES
+        const DEFAULT_TABLES = [
+            { id: 't1', name: 'ໂຕະ 01', status: 'free', items: [], customerName: '', discount: 0, pendingOrders: [] },
+            { id: 't2', name: 'ໂຕະ 02', status: 'free', items: [], customerName: '', discount: 0, pendingOrders: [] },
+            { id: 't3', name: 'ໂຕະ 03', status: 'free', items: [], customerName: '', discount: 0, pendingOrders: [] },
+            { id: 't4', name: 'ໂຕະ 04', status: 'free', items: [], customerName: '', discount: 0, pendingOrders: [] },
+            { id: 't5', name: 'ໂຕະ VIP 1', status: 'free', items: [], customerName: '', discount: 0, pendingOrders: [] },
+            { id: 't6', name: 'ໂຕະ VIP 2', status: 'free', items: [], customerName: '', discount: 0, pendingOrders: [] }
+        ];
+
+        // APP STATE
+        let productsList = [];
+        let tablesList = [];
+        let selectedCategory = 'ALL';
+        let selectedCustCategory = 'ALL';
+        let activeTableId = null;
+        let customerCart = [];
+        let orderHistory = [];
+        let currentSystemMode = 'admin'; // 'admin' or 'customer'
+        let selectedCustomerTableId = 't1';
+
+        let bankConfig = {
+            bankName: 'BCEL One Pay',
+            accountName: 'PHONEXAY STORE',
+            accountNo: '02012345678'
+        };
+        let adminConfig = {
+            passcode: '7788',
+            phone: '02012345678'
+        };
+        let isAdminLoggedIn = false;
+        let currentImageDataUrl = '';
+
+        // INITIALIZATION
+        window.addEventListener('DOMContentLoaded', () => {
+            loadLocalStorage();
+
+            // Check URL parameters if customer scanned QR
+            const urlParams = new URLSearchParams(window.location.search);
+            const tableParam = urlParams.get('table');
+            if (tableParam) {
+                const matchedTable = tablesList.find(t => t.id === tableParam || t.name === tableParam);
+                if (matchedTable) {
+                    selectedCustomerTableId = matchedTable.id;
+                    switchSystemMode('customer');
+                }
+            }
+
+            renderTables();
+            renderKitchenView();
+            renderProducts();
+            renderCart();
+            renderHistory();
+            updateAuthUI();
+            populateBankForm();
+            renderCustomerMenu();
+        });
+
+        // LOCAL STORAGE PERSISTENCE
+        function loadLocalStorage() {
+            const savedProducts = localStorage.getItem('lao_pos_products');
+            productsList = savedProducts ? JSON.parse(savedProducts) : [...DEFAULT_PRODUCTS];
+
+            const savedTables = localStorage.getItem('lao_pos_tables');
+            tablesList = savedTables ? JSON.parse(savedTables) : [...DEFAULT_TABLES];
+
+            const savedHistory = localStorage.getItem('lao_pos_history');
+            if (savedHistory) orderHistory = JSON.parse(savedHistory);
+
+            const savedAdminConfig = localStorage.getItem('lao_pos_admin_config');
+            if (savedAdminConfig) adminConfig = JSON.parse(savedAdminConfig);
+
+            const savedBankConfig = localStorage.getItem('lao_pos_bank_config');
+            if (savedBankConfig) bankConfig = JSON.parse(savedBankConfig);
+
+            const savedSession = sessionStorage.getItem('lao_pos_admin_session');
+            if (savedSession === 'true') isAdminLoggedIn = true;
+        }
+
+        function saveProducts() { localStorage.setItem('lao_pos_products', JSON.stringify(productsList)); }
+        function saveTables() { localStorage.setItem('lao_pos_tables', JSON.stringify(tablesList)); }
+        function saveHistory() { localStorage.setItem('lao_pos_history', JSON.stringify(orderHistory)); }
+        function saveAdminConfig() { localStorage.setItem('lao_pos_admin_config', JSON.stringify(adminConfig)); }
+        function saveBankConfig() { localStorage.setItem('lao_pos_bank_config', JSON.stringify(bankConfig)); }
+
+        // MODE SWITCHING (ADMIN vs CUSTOMER SELF-ORDER)
+        function switchSystemMode(mode) {
+            currentSystemMode = mode;
+            const adminContainer = document.getElementById('adminAppContainer');
+            const custContainer = document.getElementById('customerAppContainer');
+            const modeLabel = document.getElementById('currentModeLabel');
+
+            if (mode === 'customer') {
+                adminContainer.classList.add('hidden');
+                custContainer.classList.remove('hidden');
+                modeLabel.className = 'bg-emerald-600 text-white px-2 py-0.5 rounded font-bold';
+                modeLabel.innerText = 'ໂຫມດລູກຄ້າສັ່ງເອງ (Customer Scan)';
+
+                const activeTable = tablesList.find(t => t.id === selectedCustomerTableId) || tablesList[0];
+                document.getElementById('custTableName').innerText = activeTable.name;
+                renderCustomerMenu();
+                renderCustomerOrderStatus();
+            } else {
+                custContainer.classList.add('hidden');
+                adminContainer.classList.remove('hidden');
+                modeLabel.className = 'bg-indigo-600 text-white px-2 py-0.5 rounded font-bold';
+                modeLabel.innerText = 'Admin / ຫ້ອງຄົວ (Cashier & Kitchen)';
+                renderTables();
+                renderKitchenView();
+            }
+        }
+
+        function openCustomerModeSelector() {
+            const list = document.getElementById('customerTableSelectList');
+            list.innerHTML = '';
+            tablesList.forEach(table => {
+                const btn = document.createElement('button');
+                btn.className = 'bg-slate-100 hover:bg-emerald-50 hover:border-emerald-500 border border-slate-200 p-3 rounded-xl font-bold text-xs text-slate-800 transition flex items-center justify-between';
+                btn.onclick = () => {
+                    selectedCustomerTableId = table.id;
+                    closeModal('selectCustomerTableModal');
+                    switchSystemMode('customer');
+                };
+                btn.innerHTML = `<span><i class="fa-solid fa-chair text-emerald-600 mr-1.5"></i> ${table.name}</span> <i class="fa-solid fa-arrow-right text-slate-400 text-[10px]"></i>`;
+                list.appendChild(btn);
+            });
+            openModal('selectCustomerTableModal');
+        }
+
+        // TABLE MANAGEMENT
+        function renderTables() {
+            const grid = document.getElementById('tablesGrid');
+            if (!grid) return;
+            grid.innerHTML = '';
+
+            let totalPending = 0;
+
+            tablesList.forEach(table => {
+                const isSelected = activeTableId === table.id;
+                const hasPending = table.pendingOrders && table.pendingOrders.length > 0;
+                if (hasPending) totalPending += table.pendingOrders.length;
+
+                let statusBg = 'border-slate-200 bg-white';
+                let statusBadge = '<span class="bg-emerald-100 text-emerald-700 text-[10px] px-2 py-0.5 rounded-full font-bold">ຫວ່າງ</span>';
+
+                if (hasPending) {
+                    statusBg = 'border-red-400 bg-red-50/50 shadow-sm';
+                    statusBadge = '<span class="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse">ມີອໍເດີ້ໃໝ່</span>';
+                } else if (table.items && table.items.length > 0) {
+                    statusBg = 'border-amber-300 bg-amber-50/40';
+                    statusBadge = '<span class="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-full font-bold">ມີລູກຄ້າ</span>';
+                }
+
+                const itemCount = (table.items || []).reduce((sum, i) => sum + i.qty, 0);
+                const subtotal = (table.items || []).reduce((sum, i) => sum + (i.price * i.qty), 0);
+
+                const card = document.createElement('div');
+                card.className = `p-3.5 rounded-2xl border-2 cursor-pointer transition ${statusBg} ${isSelected ? 'ring-2 ring-indigo-600 border-indigo-600 shadow-md' : 'hover:shadow-md'} flex flex-col justify-between`;
+                card.onclick = () => selectActiveTable(table.id);
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                            <i class="fa-solid fa-chair text-indigo-600"></i> ${table.name}
+                        </div>
+                        ${statusBadge}
+                    </div>
+
+                    <div class="my-2 space-y-1 text-xs">
+                        <div class="flex justify-between text-slate-500">
+                            <span>ລາຍການອາຫານ:</span>
+                            <span class="font-bold text-slate-700">${itemCount} ລາຍການ</span>
+                        </div>
+                        <div class="flex justify-between text-slate-500">
+                            <span>ຍອດລວມ:</span>
+                            <span class="font-bold text-emerald-600">${subtotal.toLocaleString()} LAK</span>
+                        </div>
+                    </div>
+
+                    <div class="pt-2 border-t border-slate-100 flex gap-1.5" onclick="event.stopPropagation()">
+                        <button onclick="selectActiveTable('${table.id}')" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 rounded-lg text-[11px] font-bold transition">
+                            ຈັດການ / ເປີດບິນ
+                        </button>
+                        <button onclick="showTableQrModal('${table.id}')" title="QR Code ໂຕະ" class="bg-slate-100 hover:bg-amber-100 text-amber-700 px-2.5 py-1.5 rounded-lg text-xs font-bold transition">
+                            <i class="fa-solid fa-qrcode"></i>
+                        </button>
+                        ${isAdminLoggedIn ? `
+                            <button onclick="deleteTable('${table.id}')" title="ລຶບໂຕະ" class="bg-slate-100 hover:bg-red-100 text-red-600 px-2 py-1.5 rounded-lg text-xs font-bold transition">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+
+            const kitchenBadge = document.getElementById('kitchenBadge');
+            if (kitchenBadge) {
+                if (totalPending > 0) {
+                    kitchenBadge.innerText = totalPending;
+                    kitchenBadge.classList.remove('hidden');
+                } else {
+                    kitchenBadge.classList.add('hidden');
+                }
+            }
+        }
+
+        function handleSaveTable(e) {
+            e.preventDefault();
+            const name = document.getElementById('tableNameInput').value.trim();
+            if (name) {
+                const newTable = {
+                    id: 't_' + Date.now(),
+                    name: name,
+                    status: 'free',
+                    items: [],
+                    customerName: '',
+                    discount: 0,
+                    pendingOrders: []
+                };
+                tablesList.push(newTable);
+                saveTables();
+                renderTables();
+                closeModal('addTableModal');
+                document.getElementById('tableNameInput').value = '';
+            }
+        }
+
+        function deleteTable(tableId) {
+            if (!isAdminLoggedIn) return;
+            if (confirm('ທ່ານຕ້ອງການລຶບໂຕະນີ້ອອກແທ້ບໍ?')) {
+                tablesList = tablesList.filter(t => t.id !== tableId);
+                if (activeTableId === tableId) activeTableId = null;
+                saveTables();
+                renderTables();
+                renderCart();
+            }
+        }
+
+        function selectActiveTable(tableId) {
+            activeTableId = tableId;
+            const table = tablesList.find(t => t.id === tableId);
+            if (table) {
+                document.getElementById('customerName').value = table.customerName || '';
+                document.getElementById('discountInput').value = table.discount || 0;
+            }
+            renderTables();
+            renderCart();
+        }
+
+        function clearActiveTableOrder() {
+            if (!activeTableId) return;
+            if (confirm('ທ່ານຕ້ອງການລ້າງອໍເດີ້ທັງໝົດຂອງໂຕະນີ້ບໍ?')) {
+                const table = tablesList.find(t => t.id === activeTableId);
+                if (table) {
+                    table.items = [];
+                    table.status = 'free';
+                    table.customerName = '';
+                    table.discount = 0;
+                    saveTables();
+                    renderTables();
+                    renderCart();
+                }
+            }
+        }
+
+        function showTableQrModal(tableId = activeTableId) {
+            const table = tablesList.find(t => t.id === tableId) || tablesList[0];
+            if (!table) return;
+
+            document.getElementById('tableQrTitle').innerText = `QR Code ${table.name}`;
+            
+            // Build dynamic link for customer ordering
+            const baseUrl = window.location.origin + window.location.pathname;
+            const targetUrl = `${baseUrl}?table=${table.id}`;
+
+            const qrImg = document.getElementById('tableQrImg');
+            qrImg.src = `https://quickchart.io/qr?text=${encodeURIComponent(targetUrl)}&size=250&margin=1`;
+
+            selectedCustomerTableId = table.id;
+            openModal('tableQrModal');
+        }
+
+        function openDirectCustomerModeFromQr() {
+            closeModal('tableQrModal');
+            switchSystemMode('customer');
+        }
+
+        // KITCHEN DISPLAY SYSTEM (KDS)
+        function renderKitchenView() {
+            const container = document.getElementById('kitchenOrdersGrid');
+            if (!container) return;
+            container.innerHTML = '';
+
+            let hasAnyPending = false;
+
+            tablesList.forEach(table => {
+                if (table.pendingOrders && table.pendingOrders.length > 0) {
+                    hasAnyPending = true;
+                    table.pendingOrders.forEach((pOrder, pIdx) => {
+                        const card = document.createElement('div');
+                        card.className = 'bg-white rounded-2xl border border-red-200 shadow-sm overflow-hidden flex flex-col justify-between';
+                        
+                        let itemsHtml = pOrder.items.map(i => `
+                            <div class="flex justify-between items-center text-xs border-b border-slate-100 py-1.5">
+                                <span class="font-bold text-slate-800">${i.name} x ${i.qty}</span>
+                                <span class="text-emerald-600 font-bold">${(i.price * i.qty).toLocaleString()} LAK</span>
+                            </div>
+                        `).join('');
+
+                        card.innerHTML = `
+                            <div class="bg-red-500 text-white p-3 flex justify-between items-center">
+                                <span class="font-bold text-xs"><i class="fa-solid fa-chair mr-1"></i> ${table.name}</span>
+                                <span class="text-[10px] bg-white/20 px-2 py-0.5 rounded font-bold">${pOrder.timestamp}</span>
+                            </div>
+                            <div class="p-3 flex-1">
+                                <div class="text-[10px] text-slate-400 font-bold uppercase mb-1">ລາຍການທີ່ລູກຄ້າສັ່ງ:</div>
+                                ${itemsHtml}
+                            </div>
+                            <div class="p-3 bg-slate-50 border-t border-slate-100 flex gap-2">
+                                <button onclick="acceptKitchenOrder('${table.id}', ${pIdx})" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-xl text-xs transition">
+                                    <i class="fa-solid fa-check mr-1"></i> ຢືນຢັນຮັບອໍເດີ້
+                                </button>
+                                <button onclick="rejectKitchenOrder('${table.id}', ${pIdx})" class="bg-red-100 hover:bg-red-200 text-red-600 font-bold py-2 px-3 rounded-xl text-xs transition">
+                                    ຍົກເລີກ
+                                </button>
+                            </div>
+                        `;
+                        container.appendChild(card);
+                    });
+                }
+            });
+
+            if (!hasAnyPending) {
+                container.innerHTML = `
+                    <div class="col-span-full py-16 text-center text-slate-400">
+                        <i class="fa-solid fa-circle-check text-5xl mb-2 text-emerald-400"></i>
+                        <p class="text-xs font-bold">ບໍ່ມີອໍເດີ້ໃໝ່ທີ່ລໍຖ້າຮັບໃນຂະນະນີ້</p>
+                    </div>
+                `;
+            }
+        }
+
+        function acceptKitchenOrder(tableId, orderIndex) {
+            const table = tablesList.find(t => t.id === tableId);
+            if (!table || !table.pendingOrders[orderIndex]) return;
+
+            const pOrder = table.pendingOrders[orderIndex];
+
+            // Merge items into table active cart
+            pOrder.items.forEach(item => {
+                const existing = table.items.find(i => i.name === item.name && i.price === item.price);
+                if (existing) {
+                    existing.qty += item.qty;
+                } else {
+                    table.items.push({ ...item });
+                }
+            });
+
+            table.status = 'occupied';
+            table.pendingOrders.splice(orderIndex, 1);
+
+            saveTables();
+            renderTables();
+            renderKitchenView();
+            renderCart();
+        }
+
+        function rejectKitchenOrder(tableId, orderIndex) {
+            const table = tablesList.find(t => t.id === tableId);
+            if (!table || !table.pendingOrders[orderIndex]) return;
+
+            if (confirm('ຕ້ອງການຍົກເລີກອໍເດີ້ລາຍການນີ້ບໍ?')) {
+                table.pendingOrders.splice(orderIndex, 1);
+                saveTables();
+                renderTables();
+                renderKitchenView();
+            }
+        }
+
+        // CUSTOMER SELF-ORDERING LOGIC
+        function renderCustomerMenu() {
+            const grid = document.getElementById('custMenuGrid');
+            if (!grid) return;
+            grid.innerHTML = '';
+
+            let filtered = productsList;
+            if (selectedCustCategory !== 'ALL') {
+                filtered = filtered.filter(p => p.category === selectedCustCategory);
+            }
+
+            filtered.forEach(prod => {
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden flex flex-col justify-between';
+                card.innerHTML = `
+                    <div class="h-28 w-full bg-slate-100 relative">
+                        <img src="${prod.image}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/400x300/f1f5f9/64748b?text=Food'">
+                    </div>
+                    <div class="p-2 flex-1 flex flex-col justify-between">
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-xs line-clamp-1">${prod.name}</h4>
+                            <p class="text-xs text-emerald-600 font-bold mt-0.5">${prod.price.toLocaleString()} LAK</p>
+                        </div>
+                        <button onclick="addToCustCart('${prod.name.replace(/'/g, "\\'")}', ${prod.price})" class="w-full mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 rounded-lg text-xs transition flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-plus"></i> ສັ່ງສິນຄ້າ
+                        </button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function filterCustCategory(cat) {
+            selectedCustCategory = cat;
+            document.querySelectorAll('.cust-cat-btn').forEach(btn => {
+                if (btn.getAttribute('data-cat') === cat) {
+                    btn.className = 'cust-cat-btn px-3.5 py-1.5 rounded-full bg-indigo-600 text-white shadow-sm whitespace-nowrap';
+                } else {
+                    btn.className = 'cust-cat-btn px-3.5 py-1.5 rounded-full bg-white text-slate-600 border border-slate-200 whitespace-nowrap';
+                }
+            });
+            renderCustomerMenu();
+        }
+
+        function addToCustCart(name, price) {
+            const existing = customerCart.find(i => i.name === name && i.price === price);
+            if (existing) {
+                existing.qty += 1;
+            } else {
+                customerCart.push({ id: 'c_' + Date.now(), name, price, qty: 1 });
+            }
+            updateCustCartFooter();
+        }
+
+        function updateCustCartFooter() {
+            const total = customerCart.reduce((s, i) => s + (i.price * i.qty), 0);
+            const count = customerCart.reduce((s, i) => s + i.qty, 0);
+
+            document.getElementById('custCartTotalText').innerText = `${total.toLocaleString()} LAK`;
+            document.getElementById('custCartCount').innerText = count;
+        }
+
+        function openCustomerCartModal() {
+            if (customerCart.length === 0) {
+                alert('ກະລຸນາເລືອກເມນູອາຫານກ່ອນ!');
+                return;
+            }
+            const container = document.getElementById('custCartItemsContainer');
+            container.innerHTML = '';
+
+            let total = 0;
+            customerCart.forEach((item, idx) => {
+                const itemTotal = item.price * item.qty;
+                total += itemTotal;
+
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs';
+                div.innerHTML = `
+                    <div class="flex-1">
+                        <div class="font-bold text-slate-800">${item.name}</div>
+                        <div class="text-slate-500">${item.price.toLocaleString()} LAK</div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="updateCustQty(${idx}, -1)" class="w-6 h-6 bg-slate-200 font-bold rounded flex items-center justify-center">-</button>
+                        <span class="font-bold">${item.qty}</span>
+                        <button onclick="updateCustQty(${idx}, 1)" class="w-6 h-6 bg-slate-200 font-bold rounded flex items-center justify-center">+</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+
+            document.getElementById('custModalGrandTotal').innerText = `${total.toLocaleString()} LAK`;
+            openModal('custCartModal');
+        }
+
+        function updateCustQty(index, delta) {
+            customerCart[index].qty += delta;
+            if (customerCart[index].qty <= 0) {
+                customerCart.splice(index, 1);
+            }
+            if (customerCart.length === 0) {
+                closeModal('custCartModal');
+            } else {
+                openCustomerCartModal();
+            }
+            updateCustCartFooter();
+        }
+
+        function submitCustomerOrder() {
+            const table = tablesList.find(t => t.id === selectedCustomerTableId) || tablesList[0];
+            if (!table) return;
+
+            if (!table.pendingOrders) table.pendingOrders = [];
+
+            table.pendingOrders.push({
+                timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+                items: [...customerCart]
+            });
+
+            saveTables();
+            customerCart = [];
+            updateCustCartFooter();
+            closeModal('custCartModal');
+
+            renderCustomerOrderStatus();
+            alert('ສົ່ງອໍເດີ້ເຂົ້າຫ້ອງຄົວຮຽບຮ້ອຍແລ້ວ!');
+        }
+
+        function renderCustomerOrderStatus() {
+            const card = document.getElementById('custOrderStatusCard');
+            const list = document.getElementById('custOrderItemsList');
+            const table = tablesList.find(t => t.id === selectedCustomerTableId);
+
+            if (!table) return;
+
+            const allItems = [...(table.items || [])];
+            (table.pendingOrders || []).forEach(p => allItems.push(...p.items));
+
+            if (allItems.length > 0) {
+                card.classList.remove('hidden');
+                list.innerHTML = allItems.map(i => `
+                    <div class="flex justify-between">
+                        <span>• ${i.name} x ${i.qty}</span>
+                        <span class="font-bold">${(i.price * i.qty).toLocaleString()} LAK</span>
+                    </div>
+                `).join('');
+            } else {
+                card.classList.add('hidden');
+            }
+        }
+
+        // BANK SETTINGS
+        function populateBankForm() {
+            document.getElementById('bankNameInput').value = bankConfig.bankName;
+            document.getElementById('accountNameInput').value = bankConfig.accountName;
+            document.getElementById('accountNoInput').value = bankConfig.accountNo;
+        }
+
+        function saveBankSettings() {
+            bankConfig.bankName = document.getElementById('bankNameInput').value.trim() || 'BCEL One';
+            bankConfig.accountName = document.getElementById('accountNameInput').value.trim() || 'STORE';
+            bankConfig.accountNo = document.getElementById('accountNoInput').value.trim() || '020XXXXXXXX';
+            saveBankConfig();
+            closeModal('bankSettingsModal');
+            alert('ບັນທຶກຂໍ້ມູນທະນາຄານສຳເລັດ!');
+        }
+
+        // ADMIN AUTHENTICATION
+        function handleAuthAction() {
+            if (isAdminLoggedIn) {
+                isAdminLoggedIn = false;
+                sessionStorage.removeItem('lao_pos_admin_session');
+                updateAuthUI();
+                renderHistory();
+                renderProducts();
+                renderTables();
+            } else {
+                toggleAuthView('login');
+                openModal('authModal');
+            }
+        }
+
+        function toggleAuthView(view) {
+            const loginSec = document.getElementById('loginFormSection');
+            const resetSec = document.getElementById('resetFormSection');
+            const title = document.getElementById('authModalTitle');
+
+            document.getElementById('authErrorMsg').classList.add('hidden');
+            document.getElementById('resetStatusMsg').classList.add('hidden');
+
+            if (view === 'login') {
+                loginSec.classList.remove('hidden');
+                resetSec.classList.add('hidden');
+                title.innerHTML = '<i class="fa-solid fa-user-shield text-indigo-400"></i> ເຂົ້າສູ່ລະບົບ Admin ຫຼັງບ້ານ';
+            } else {
+                loginSec.classList.add('hidden');
+                resetSec.classList.remove('hidden');
+                title.innerHTML = '<i class="fa-solid fa-key text-emerald-400"></i> ຣີເຊັດ / ສ້າງລະຫັດ Admin';
+            }
+        }
+
+        function verifyAdminLogin() {
+            const passInput = document.getElementById('inputAdminPasscode').value.trim();
+            const errBox = document.getElementById('authErrorMsg');
+
+            if (passInput === adminConfig.passcode) {
+                isAdminLoggedIn = true;
+                sessionStorage.setItem('lao_pos_admin_session', 'true');
+                document.getElementById('inputAdminPasscode').value = '';
+                closeModal('authModal');
+                updateAuthUI();
+                renderHistory();
+                renderProducts();
+                renderTables();
+            } else {
+                errBox.classList.remove('hidden');
+            }
+        }
+
+        function handlePasswordReset() {
+            const phone = document.getElementById('inputResetPhone').value.trim();
+            const newPass = document.getElementById('inputNewPasscode').value.trim();
+            const msgBox = document.getElementById('resetStatusMsg');
+
+            if (phone !== adminConfig.phone) {
+                msgBox.className = 'text-xs font-semibold text-center py-1.5 rounded-lg bg-red-100 text-red-600';
+                msgBox.innerText = 'ເບີໂທລະສັບບໍ່ຖືກຕ້ອງ!';
+                msgBox.classList.remove('hidden');
+                return;
+            }
+
+            if (!newPass) {
+                msgBox.className = 'text-xs font-semibold text-center py-1.5 rounded-lg bg-red-100 text-red-600';
+                msgBox.innerText = 'ກະລຸນາປ້ອນລະຫັດຜ່ານໃໝ່';
+                msgBox.classList.remove('hidden');
+                return;
+            }
+
+            adminConfig.passcode = newPass;
+            saveAdminConfig();
+
+            msgBox.className = 'text-xs font-semibold text-center py-1.5 rounded-lg bg-emerald-100 text-emerald-700';
+            msgBox.innerText = 'ປ່ຽນລະຫັດຜ່ານສຳເລັດແລ້ວ!';
+            msgBox.classList.remove('hidden');
+
+            setTimeout(() => { toggleAuthView('login'); }, 1200);
+        }
+
+        function updateAuthUI() {
+            const btnText = document.getElementById('navAuthText');
+            const adminBadge = document.getElementById('adminBadge');
+            const clearHistoryBtn = document.getElementById('btnClearHistory');
+            const navAddMenuBtn = document.getElementById('navAddMenuBtn');
+            const navAddTableBtn = document.getElementById('navAddTableBtn');
+
+            if (isAdminLoggedIn) {
+                btnText.innerText = 'ອອກຈາກລະບົບ';
+                adminBadge.classList.remove('hidden');
+                adminBadge.classList.add('flex');
+                if (clearHistoryBtn) clearHistoryBtn.classList.remove('hidden');
+                if (navAddMenuBtn) navAddMenuBtn.classList.remove('hidden');
+                if (navAddTableBtn) navAddTableBtn.classList.remove('hidden');
+            } else {
+                btnText.innerText = 'ເຂົ້າສູ່ລະບົບ Admin';
+                adminBadge.classList.add('hidden');
+                adminBadge.classList.remove('flex');
+                if (clearHistoryBtn) clearHistoryBtn.classList.add('hidden');
+                if (navAddMenuBtn) navAddMenuBtn.classList.add('hidden');
+                if (navAddTableBtn) navAddTableBtn.classList.add('hidden');
+            }
+        }
+
+        // IMAGE PREVIEW & UPLOAD LOGIC
+        function previewLocalImage(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    currentImageDataUrl = e.target.result;
+                    document.getElementById('imagePreview').src = currentImageDataUrl;
+                    document.getElementById('menuImageUrl').value = '';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function previewUrlImage() {
+            const url = document.getElementById('menuImageUrl').value.trim();
+            if (url) {
+                currentImageDataUrl = url;
+                document.getElementById('imagePreview').src = url;
+                document.getElementById('menuImageFile').value = '';
+            }
+        }
+
+        // MENU CRUD OPERATIONS
+        function openAddMenuModal() {
+            document.getElementById('editProdId').value = '';
+            document.getElementById('modalMenuTitle').innerHTML = '<i class="fa-solid fa-plus-circle text-emerald-400"></i> ເພີ່ມເມນູອາຫານໃໝ່';
+            document.getElementById('menuName').value = '';
+            document.getElementById('menuPrice').value = '';
+            document.getElementById('menuCategory').value = 'ອາຫານ';
+            document.getElementById('menuImageFile').value = '';
+            document.getElementById('menuImageUrl').value = '';
+            currentImageDataUrl = '';
+            document.getElementById('imagePreview').src = 'https://placehold.co/200x200/f1f5f9/94a3b8?text=No+Image';
+            openModal('addProductModal');
+        }
+
+        function editProduct(prodId) {
+            if (!isAdminLoggedIn) return;
+            const prod = productsList.find(p => p.id === prodId);
+            if (!prod) return;
+
+            document.getElementById('editProdId').value = prod.id;
+            document.getElementById('modalMenuTitle').innerHTML = '<i class="fa-solid fa-pen-to-square text-amber-400"></i> ແກ້ໄຂເມນູອາຫານ';
+            document.getElementById('menuName').value = prod.name;
+            document.getElementById('menuPrice').value = prod.price;
+            document.getElementById('menuCategory').value = prod.category || 'ອາຫານ';
+            document.getElementById('menuImageFile').value = '';
+            
+            if (prod.image.startsWith('data:image')) {
+                document.getElementById('menuImageUrl').value = '';
+            } else {
+                document.getElementById('menuImageUrl').value = prod.image;
+            }
+
+            currentImageDataUrl = prod.image;
+            document.getElementById('imagePreview').src = prod.image || 'https://placehold.co/200x200/f1f5f9/94a3b8?text=No+Image';
+            openModal('addProductModal');
+        }
+
+        function handleSaveProduct(e) {
+            e.preventDefault();
+            const editId = document.getElementById('editProdId').value;
+            const name = document.getElementById('menuName').value.trim();
+            const price = parseFloat(document.getElementById('menuPrice').value);
+            const category = document.getElementById('menuCategory').value;
+
+            let finalImage = currentImageDataUrl;
+            if (!finalImage) {
+                finalImage = category === 'ເຄື່ອງດື່ມ' 
+                    ? 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=500&auto=format&fit=crop&q=80'
+                    : 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=500&auto=format&fit=crop&q=80';
+            }
+
+            if (editId) {
+                const index = productsList.findIndex(p => p.id === editId);
+                if (index > -1) {
+                    productsList[index] = { ...productsList[index], name, price, category, image: finalImage };
+                }
+            } else {
+                const newProduct = { id: 'prod_' + Date.now(), name, price, category, image: finalImage };
+                productsList.unshift(newProduct);
+            }
+
+            saveProducts();
+            renderProducts();
+            closeModal('addProductModal');
+        }
+
+        function deleteProduct(prodId) {
+            if (!isAdminLoggedIn) return;
+            if (confirm('ທ່ານຕ້ອງການລຶບເມນູອາຫານນີ້ອອກແທ້ບໍ?')) {
+                productsList = productsList.filter(p => p.id !== prodId);
+                saveProducts();
+                renderProducts();
+            }
+        }
+
+        function filterCategory(cat) {
+            selectedCategory = cat;
+            document.querySelectorAll('.cat-btn').forEach(btn => {
+                if (btn.getAttribute('data-cat') === cat) {
+                    btn.className = 'cat-btn px-3 py-1 rounded-full bg-indigo-600 text-white shadow-sm whitespace-nowrap';
+                } else {
+                    btn.className = 'cat-btn px-3 py-1 rounded-full bg-white text-slate-600 border border-slate-200 whitespace-nowrap';
+                }
+            });
+            renderProducts();
+        }
+
+        function renderProducts() {
+            const grid = document.getElementById('productGrid');
+            if (!grid) return;
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            grid.innerHTML = '';
+
+            let filtered = productsList.filter(p => p.name.toLowerCase().includes(query));
+            if (selectedCategory !== 'ALL') {
+                filtered = filtered.filter(p => p.category === selectedCategory);
+            }
+
+            if (filtered.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-full py-12 text-center text-slate-400">
+                        <i class="fa-solid fa-utensils text-4xl mb-2"></i>
+                        <p class="text-xs">ບໍ່ພົບເມນູອາຫານ</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filtered.forEach(prod => {
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-xl border border-slate-200 shadow-xs hover:shadow-md transition overflow-hidden flex flex-col group relative';
+                
+                card.innerHTML = `
+                    ${isAdminLoggedIn ? `
+                        <div class="absolute top-2 right-2 flex gap-1 z-10">
+                            <button onclick="editProduct('${prod.id}')" title="ແກ້ໄຂເມນູ" class="bg-slate-900/80 hover:bg-slate-900 text-amber-400 text-xs w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-sm shadow-md">
+                                <i class="fa-solid fa-pen"></i>
+                            </button>
+                            <button onclick="deleteProduct('${prod.id}')" title="ລຶບເມນູ" class="bg-red-600/80 hover:bg-red-600 text-white text-xs w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-sm shadow-md">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    ` : ''}
+                    <div class="relative h-28 sm:h-32 w-full overflow-hidden bg-slate-100 cursor-pointer" onclick="addToCart('${prod.name.replace(/'/g, "\\'")}', ${prod.price}, 1)">
+                        <img src="${prod.image}" alt="${prod.name}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" onerror="this.src='https://placehold.co/400x300/f1f5f9/64748b?text=Food'">
+                        <span class="absolute bottom-2 left-2 text-[10px] bg-slate-900/80 text-white font-semibold px-2 py-0.5 rounded-md backdrop-blur-sm">
+                            ${prod.category || 'ອາຫານ'}
+                        </span>
+                    </div>
+                    <div class="p-2.5 flex-1 flex flex-col justify-between">
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-xs sm:text-sm line-clamp-1 mb-1" title="${prod.name}">${prod.name}</h4>
+                            <p class="text-xs text-emerald-600 font-bold">${prod.price.toLocaleString()} LAK</p>
+                        </div>
+                        <button onclick="addToCart('${prod.name.replace(/'/g, "\\'")}', ${prod.price}, 1)" class="w-full mt-2 text-xs bg-slate-100 hover:bg-emerald-600 text-slate-700 hover:text-white font-semibold py-1.5 rounded-lg transition flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-cart-plus"></i> ເພີ່ມໃສ່ກະຕ່າ
+                        </button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function handleManualAdd(e) {
+            e.preventDefault();
+            const name = document.getElementById('mName').value.trim();
+            const price = parseFloat(document.getElementById('mPrice').value);
+            const qty = parseInt(document.getElementById('mQty').value);
+
+            if (name && price >= 0 && qty > 0) {
+                addToCart(name, price, qty);
+                document.getElementById('mName').value = '';
+                document.getElementById('mPrice').value = '';
+                document.getElementById('mQty').value = '1';
+            }
+        }
+
+        // CART LOGIC
+        function addToCart(name, price, qty) {
+            if (!activeTableId) {
+                alert('ກະລຸນາເລືອກໂຕະກ່ອນເພື່ອເພີ່ມສິນຄ້າ!');
+                switchTab('tables');
+                return;
+            }
+
+            const table = tablesList.find(t => t.id === activeTableId);
+            if (!table) return;
+
+            if (!table.items) table.items = [];
+
+            const existingIndex = table.items.findIndex(item => item.name === name && item.price === price);
+            if (existingIndex > -1) {
+                table.items[existingIndex].qty += qty;
+            } else {
+                table.items.push({ id: 'cart_' + Date.now(), name, price, qty });
+            }
+
+            table.status = 'occupied';
+            saveTables();
+            renderTables();
+            renderCart();
+        }
+
+        function updateCartQty(id, delta) {
+            if (!activeTableId) return;
+            const table = tablesList.find(t => t.id === activeTableId);
+            if (!table) return;
+
+            const index = table.items.findIndex(item => item.id === id);
+            if (index > -1) {
+                table.items[index].qty += delta;
+                if (table.items[index].qty <= 0) {
+                    table.items.splice(index, 1);
+                }
+            }
+
+            if (table.items.length === 0 && (!table.pendingOrders || table.pendingOrders.length === 0)) {
+                table.status = 'free';
+            }
+
+            saveTables();
+            renderTables();
+            renderCart();
+        }
+
+        function removeCartItem(id) {
+            if (!activeTableId) return;
+            const table = tablesList.find(t => t.id === activeTableId);
+            if (!table) return;
+
+            table.items = table.items.filter(item => item.id !== id);
+            if (table.items.length === 0) table.status = 'free';
+
+            saveTables();
+            renderTables();
+            renderCart();
+        }
+
+        function renderCart() {
+            const container = document.getElementById('cartItemsContainer');
+            const title = document.getElementById('activeTableTitle');
+            const subtitle = document.getElementById('activeTableSubtitle');
+
+            container.innerHTML = '';
+
+            if (!activeTableId) {
+                title.innerText = 'ເລືອກໂຕະ (ກະລຸນາເລືອກໂຕະ)';
+                subtitle.innerText = 'ບໍ່ມີໂຕະທີ່ເລືອກ';
+                document.getElementById('summarySubtotal').innerText = '0 LAK';
+                document.getElementById('summaryGrandTotal').innerText = '0 LAK';
+                container.innerHTML = `
+                    <div class="h-full flex flex-col items-center justify-center text-slate-400 py-12">
+                        <i class="fa-solid fa-chair text-4xl mb-2 text-slate-300"></i>
+                        <p class="text-xs">ກະລຸນາເລືອກໂຕະຈາກໜ້າ "ຈັດການໂຕະ"</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const table = tablesList.find(t => t.id === activeTableId);
+            if (!table) return;
+
+            title.innerText = `ລາຍການອໍເດີ້ - ${table.name}`;
+            subtitle.innerText = table.items && table.items.length > 0 ? 'ມີອໍເດີ້' : 'ໂຕະຫວ່າງ';
+
+            let subtotal = 0;
+
+            if (!table.items || table.items.length === 0) {
+                container.innerHTML = `
+                    <div class="h-full flex flex-col items-center justify-center text-slate-400 py-12">
+                        <i class="fa-solid fa-basket-shopping text-4xl mb-2 text-slate-300"></i>
+                        <p class="text-xs">ຍັງບໍ່ມີສິນຄ້າໃນໂຕະນີ້</p>
+                    </div>
+                `;
+            } else {
+                table.items.forEach(item => {
+                    const itemTotal = item.price * item.qty;
+                    subtotal += itemTotal;
+
+                    const row = document.createElement('div');
+                    row.className = 'bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex items-center justify-between text-xs';
+                    row.innerHTML = `
+                        <div class="flex-1 pr-2">
+                            <h5 class="font-bold text-slate-800 truncate">${item.name}</h5>
+                            <p class="text-slate-500">${item.price.toLocaleString()} LAK</p>
+                        </div>
+                        <div class="flex items-center space-x-1 space-x-reverse mr-2">
+                            <button onclick="updateCartQty('${item.id}', -1)" class="w-6 h-6 bg-slate-200 hover:bg-slate-300 rounded-md text-slate-700 font-bold flex items-center justify-center">-</button>
+                            <span class="w-6 text-center font-bold text-slate-800">${item.qty}</span>
+                            <button onclick="updateCartQty('${item.id}', 1)" class="w-6 h-6 bg-slate-200 hover:bg-slate-300 rounded-md text-slate-700 font-bold flex items-center justify-center">+</button>
+                        </div>
+                        <div class="text-right pl-2">
+                            <div class="font-bold text-emerald-600">${itemTotal.toLocaleString()}</div>
+                            <button onclick="removeCartItem('${item.id}')" class="text-[10px] text-red-500 hover:underline">ລຶບ</button>
+                        </div>
+                    `;
+                    container.appendChild(row);
+                });
+            }
+
+            const discount = parseFloat(document.getElementById('discountInput').value) || 0;
+            const grandTotal = Math.max(0, subtotal - discount);
+
+            document.getElementById('summarySubtotal').innerText = `${subtotal.toLocaleString()} LAK`;
+            document.getElementById('summaryGrandTotal').innerText = `${grandTotal.toLocaleString()} LAK`;
+        }
+
+        // CHECKOUT & RECEIPT
+        function processCheckout() {
+            if (!activeTableId) {
+                alert('ກະລຸນາເລືອກໂຕະກ່ອນ!');
+                return;
+            }
+
+            const table = tablesList.find(t => t.id === activeTableId);
+            if (!table || !table.items || table.items.length === 0) {
+                alert('ບໍ່ມີລາຍການສິນຄ້າໃນໂຕະນີ້!');
+                return;
+            }
+
+            const customer = document.getElementById('customerName').value.trim() || table.name;
+            const payMethod = document.getElementById('paymentMethodSelect').value;
+            const discount = parseFloat(document.getElementById('discountInput').value) || 0;
+            const subtotal = table.items.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            const grandTotal = Math.max(0, subtotal - discount);
+            
+            const newOrder = {
+                id: 'POS-' + Math.floor(100000 + Math.random() * 900000),
+                timestamp: new Date().toLocaleString('en-GB'),
+                customer: customer,
+                paymentMethod: payMethod === 'qr' ? 'ໂອນຊຳລະ QR Code' : 'ເງິນສົດ (Cash)',
+                items: [...table.items],
+                subtotal: subtotal,
+                discount: discount,
+                total: grandTotal
+            };
+
+            orderHistory.unshift(newOrder);
+            saveHistory();
+
+            // Clear active table
+            table.items = [];
+            table.status = 'free';
+            table.customerName = '';
+            table.discount = 0;
+            saveTables();
+
+            displayReceipt(newOrder);
+            renderTables();
+            renderCart();
+            renderHistory();
+        }
+
+        function displayReceipt(order) {
+            document.getElementById('recId').innerText = `#${order.id}`;
+            document.getElementById('recDate').innerText = order.timestamp;
+            document.getElementById('recCustomer').innerText = order.customer;
+            document.getElementById('recPayMethod').innerText = order.paymentMethod;
+            document.getElementById('recSubtotal').innerText = `${order.subtotal.toLocaleString()} LAK`;
+            
+            if (order.discount > 0) {
+                document.getElementById('recDiscount').innerText = `-${order.discount.toLocaleString()} LAK`;
+                document.getElementById('recDiscountRow').classList.remove('hidden');
+            } else {
+                document.getElementById('recDiscountRow').classList.add('hidden');
+            }
+
+            document.getElementById('recGrandTotal').innerText = `${order.total.toLocaleString()} LAK`;
+
+            const tbody = document.getElementById('recItemsBody');
+            tbody.innerHTML = '';
+
+            order.items.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-slate-100';
+                tr.innerHTML = `
+                    <td class="py-1">${item.name}</td>
+                    <td class="py-1 text-center">${item.qty}</td>
+                    <td class="py-1 text-right">${(item.price * item.qty).toLocaleString()}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // GENERATE DYNAMIC QR CODE FOR RECEIPT
+            const qrContainer = document.getElementById('recQrContainer');
+            const qrImg = document.getElementById('qrCodeImg');
+
+            if (order.paymentMethod.includes('QR Code')) {
+                qrContainer.classList.remove('hidden');
+                const qrPayload = `LAOPAY:${bankConfig.bankName}|ACC:${bankConfig.accountNo}|NAME:${bankConfig.accountName}|AMT:${order.total}|BILL:${order.id}`;
+                qrImg.src = `https://quickchart.io/qr?text=${encodeURIComponent(qrPayload)}&size=180&margin=1`;
+                document.getElementById('recBankInfo').innerText = `${bankConfig.bankName} | ${bankConfig.accountName} | ${bankConfig.accountNo}`;
+            } else {
+                qrContainer.classList.add('hidden');
+            }
+
+            openModal('receiptModal');
+        }
+
+        // HISTORY MANAGEMENT
+        function renderHistory() {
+            const tbody = document.getElementById('historyTableBody');
+            const emptyMsg = document.getElementById('emptyHistoryMsg');
+            const countBadge = document.getElementById('historyCountBadge');
+            const query = document.getElementById('historySearchInput').value.toLowerCase();
+            
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            const filteredOrders = orderHistory.filter(o => 
+                o.id.toLowerCase().includes(query) ||
+                o.customer.toLowerCase().includes(query) ||
+                o.paymentMethod.toLowerCase().includes(query)
+            );
+
+            countBadge.innerText = filteredOrders.length;
+
+            if (filteredOrders.length === 0) {
+                emptyMsg.classList.remove('hidden');
+            } else {
+                emptyMsg.classList.add('hidden');
+                filteredOrders.forEach(order => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-slate-50 transition border-b border-slate-100';
+                    tr.innerHTML = `
+                        <td class="p-2.5 font-bold text-indigo-600">#${order.id}</td>
+                        <td class="p-2.5 text-[11px] text-slate-500">${order.timestamp}</td>
+                        <td class="p-2.5 font-semibold text-slate-700">${order.customer}</td>
+                        <td class="p-2.5 text-[11px] font-semibold ${order.paymentMethod.includes('QR') ? 'text-purple-600' : 'text-emerald-600'}">${order.paymentMethod}</td>
+                        <td class="p-2.5 text-right font-bold text-slate-800">${order.total.toLocaleString()} LAK</td>
+                        <td class="p-2.5 text-center">
+                            <div class="flex items-center justify-center gap-1">
+                                <button onclick='reprintOrder("${order.id}")' title="ພິມບິນ" class="text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 p-1.5 rounded-md transition">
+                                    <i class="fa-solid fa-print"></i>
+                                </button>
+                                ${isAdminLoggedIn ? `
+                                    <button onclick="deleteOrder('${order.id}')" title="ລຶບອໍເດີ້" class="text-xs bg-red-50 text-red-600 hover:bg-red-100 p-1.5 rounded-md transition">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        }
+
+        function reprintOrder(orderId) {
+            const order = orderHistory.find(o => o.id === orderId);
+            if (order) displayReceipt(order);
+        }
+
+        function deleteOrder(orderId) {
+            if (!isAdminLoggedIn) return;
+            if (confirm(`ທ່ານຕ້ອງການລຶບອໍເດີ້ #${orderId} ແທ້ບໍ?`)) {
+                orderHistory = orderHistory.filter(o => o.id !== orderId);
+                saveHistory();
+                renderHistory();
+            }
+        }
+
+        function clearAllHistory() {
+            if (!isAdminLoggedIn) return;
+            if (confirm('ທ່ານຕ້ອງການລຶບປະວັດການຂາຍທັງໝົດແທ້ບໍ?')) {
+                orderHistory = [];
+                saveHistory();
+                renderHistory();
+            }
+        }
+
+        // TAB SWITCHER
+        function switchTab(tab) {
+            const tablesView = document.getElementById('viewTables');
+            const kitchenView = document.getElementById('viewKitchen');
+            const posView = document.getElementById('viewPos');
+            const historyView = document.getElementById('viewHistory');
+
+            const filterGroup = document.getElementById('posFilterGroup');
+            const catBar = document.getElementById('categoryBar');
+
+            const tabTablesBtn = document.getElementById('tabTablesBtn');
+            const tabKitchenBtn = document.getElementById('tabKitchenBtn');
+            const tabPosBtn = document.getElementById('tabPosBtn');
+            const tabHistoryBtn = document.getElementById('tabHistoryBtn');
+
+            // Hide all views
+            tablesView.classList.add('hidden');
+            kitchenView.classList.add('hidden');
+            posView.classList.add('hidden');
+            historyView.classList.add('hidden');
+            filterGroup.classList.add('hidden');
+            catBar.classList.add('hidden');
+
+            const activeClass = 'px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition bg-indigo-600 text-white shadow-sm flex items-center gap-1.5 whitespace-nowrap';
+            const inactiveClass = 'px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition text-slate-600 hover:bg-slate-100 flex items-center gap-1.5 whitespace-nowrap';
+
+            tabTablesBtn.className = inactiveClass;
+            tabKitchenBtn.className = inactiveClass;
+            tabPosBtn.className = inactiveClass;
+            tabHistoryBtn.className = inactiveClass;
+
+            if (tab === 'tables') {
+                tablesView.classList.remove('hidden');
+                tabTablesBtn.className = activeClass;
+                renderTables();
+            } else if (tab === 'kitchen') {
+                kitchenView.classList.remove('hidden');
+                tabKitchenBtn.className = activeClass;
+                renderKitchenView();
+            } else if (tab === 'pos') {
+                posView.classList.remove('hidden');
+                filterGroup.classList.remove('hidden');
+                catBar.classList.remove('hidden');
+                tabPosBtn.className = activeClass;
+                renderProducts();
+            } else if (tab === 'history') {
+                historyView.classList.remove('hidden');
+                tabHistoryBtn.className = activeClass;
+                renderHistory();
+            }
+        }
+
+        function openModal(id) {
+            if (id === 'addProductModal' && !document.getElementById('editProdId').value) {
+                openAddMenuModal();
+            } else {
+                document.getElementById(id).classList.remove('hidden');
+            }
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
